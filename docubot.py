@@ -10,6 +10,11 @@ Core DocuBot class responsible for:
 import os
 import glob
 
+# Minimum number of query words that must match a document
+# for it to count as meaningful evidence.
+# For short queries (< MIN_EVIDENCE_SCORE words), we require all words to match.
+MIN_EVIDENCE_SCORE = 2
+
 class DocuBot:
     def __init__(self, docs_folder="docs", llm_client=None):
         """
@@ -64,7 +69,13 @@ class DocuBot:
         ignore punctuation if needed.
         """
         index = {}
-        # TODO: implement simple indexing
+        for filename, text in documents:
+            for token in text.lower().split():
+                token = token.strip(".,!?;:\"'()[]{}")
+                if token not in index:
+                    index[token] = []
+                if filename not in index[token]:
+                    index[token].append(filename)
         return index
 
     # -----------------------------------------------------------
@@ -81,8 +92,9 @@ class DocuBot:
         - Count how many appear in the text
         - Return the count as the score
         """
-        # TODO: implement scoring
-        return 0
+        query_tokens = query.lower().split()
+        text_lower = text.lower()
+        return sum(1 for token in query_tokens if token in text_lower)
 
     def retrieve(self, query, top_k=3):
         """
@@ -91,9 +103,17 @@ class DocuBot:
 
         Return a list of (filename, text) sorted by score descending.
         """
-        results = []
-        # TODO: implement retrieval logic
-        return results[:top_k]
+        # For short queries, require all words to match; otherwise use MIN_EVIDENCE_SCORE
+        query_length = len(query.split())
+        threshold = min(MIN_EVIDENCE_SCORE, query_length)
+
+        scored = []
+        for filename, text in self.documents:
+            score = self.score_document(query, text)
+            if score >= threshold:
+                scored.append((score, filename, text))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [(filename, text) for _, filename, text in scored[:top_k]]
 
     # -----------------------------------------------------------
     # Answering Modes
